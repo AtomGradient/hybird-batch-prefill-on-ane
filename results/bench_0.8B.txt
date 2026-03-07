@@ -1,0 +1,126 @@
+
+[1/9] short / ane (10 runs)...
+  Run 1/10... done (decode 17.9 t/s)
+  Run 2/10... done (decode 16.4 t/s)
+  Run 3/10... done (decode 18.0 t/s)
+  Run 4/10... done (decode 17.8 t/s)
+  Run 5/10... done (decode 18.1 t/s)
+  Run 6/10... done (decode 17.0 t/s)
+  Run 7/10... done (decode 17.8 t/s)
+  Run 8/10... done (decode 17.8 t/s)
+  Run 9/10... done (decode 18.1 t/s)
+  Run 10/10... done (decode 16.8 t/s)
+
+[2/9] short / mlx (10 runs)...
+  Run 1/10... done (decode 60.7 t/s)
+  Run 2/10... done (decode 59.7 t/s)
+  Run 3/10... done (decode 62.5 t/s)
+  Run 4/10... done (decode 62.7 t/s)
+  Run 5/10... done (decode 62.4 t/s)
+  Run 6/10... done (decode 59.9 t/s)
+  Run 7/10... done (decode 61.7 t/s)
+  Run 8/10... done (decode 58.9 t/s)
+  Run 9/10... done (decode 62.8 t/s)
+  Run 10/10... done (decode 60.7 t/s)
+
+[3/9] short / hybrid (10 runs)...
+  Run 1/10... done (decode 41.9 t/s)
+  Run 2/10... done (decode 33.7 t/s)
+  Run 3/10... done (decode 39.4 t/s)
+  Run 4/10... done (decode 41.4 t/s)
+  Run 5/10... done (decode 40.2 t/s)
+  Run 6/10... done (decode 39.7 t/s)
+  Run 7/10... done (decode 40.8 t/s)
+  Run 8/10... done (decode 40.4 t/s)
+  Run 9/10... done (decode 40.2 t/s)
+  Run 10/10... done (decode 36.0 t/s)
+
+[4/9] medium / ane (10 runs)...
+  Run 1/10... done (decode 16.9 t/s)
+  Run 2/10... done (decode 16.5 t/s)
+  Run 3/10... done (decode 16.3 t/s)
+  Run 4/10... done (decode 17.0 t/s)
+  Run 5/10... done (decode 15.4 t/s)
+  Run 6/10... done (decode 17.0 t/s)
+  Run 7/10... done (decode 16.8 t/s)
+  Run 8/10... done (decode 16.6 t/s)
+  Run 9/10... done (decode 15.7 t/s)
+  Run 10/10... done (decode 15.9 t/s)
+
+[5/9] medium / mlx (10 runs)...
+  Run 1/10... done (decode 65.0 t/s)
+  Run 2/10... done (decode 64.4 t/s)
+  Run 3/10... done (decode 64.4 t/s)
+  Run 4/10... done (decode 64.4 t/s)
+  Run 5/10... done (decode 65.1 t/s)
+  Run 6/10... done (decode 62.5 t/s)
+  Run 7/10... done (decode 65.0 t/s)
+  Run 8/10... done (decode 64.0 t/s)
+  Run 9/10... done (decode 64.9 t/s)
+  Run 10/10... done (decode 65.2 t/s)
+
+[6/9] medium / hybrid (10 runs)...
+  Run 1/10... done (decode 55.1 t/s)
+  Run 2/10... done (decode 55.0 t/s)
+  Run 3/10... done (decode 54.4 t/s)
+  Run 4/10... done (decode 55.5 t/s)
+  Run 5/10... done (decode 53.3 t/s)
+  Run 6/10... done (decode 54.5 t/s)
+  Run 7/10... done (decode 50.4 t/s)
+  Run 8/10... done (decode 52.9 t/s)
+  Run 9/10... done (decode 54.4 t/s)
+  Run 10/10... done (decode 53.7 t/s)
+
+[7/9] long / ane (10 runs)...
+  Run 1/10... done (decode 17.2 t/s)
+  Run 2/10... done (decode 16.9 t/s)
+  Run 3/10... done (decode 17.5 t/s)
+  Run 4/10... done (decode 16.3 t/s)
+  Run 5/10... done (decode 17.0 t/s)
+  Run 6/10... done (decode 17.7 t/s)
+  Run 7/10... done (decode 17.6 t/s)
+  Run 8/10... done (decode 16.5 t/s)
+  Run 9/10... done (decode 17.2 t/s)
+  Run 10/10... done (decode 16.8 t/s)
+
+[8/9] long / mlx (10 runs)...
+  Run 1/10... done (decode 64.1 t/s)
+  Run 2/10... done (decode 64.2 t/s)
+  Run 3/10... done (decode 62.2 t/s)
+  Run 4/10... done (decode 64.1 t/s)
+  Run 5/10... done (decode 64.5 t/s)
+  Run 6/10... done (decode 64.5 t/s)
+  Run 7/10... done (decode 63.6 t/s)
+  Run 8/10... done (decode 64.2 t/s)
+  Run 9/10... done (decode 64.1 t/s)
+  Run 10/10... done (decode 65.3 t/s)
+
+[9/9] long / hybrid (10 runs)...
+  Run 1/10... done (decode 52.9 t/s)
+  Run 2/10... done (decode 51.7 t/s)
+  Run 3/10... done (decode 54.2 t/s)
+  Run 4/10... done (decode 53.9 t/s)
+  Run 5/10... done (decode 56.0 t/s)
+  Run 6/10... done (decode 50.0 t/s)
+  Run 7/10... done (decode 54.7 t/s)
+  Run 8/10... done (decode 54.8 t/s)
+  Run 9/10... done (decode 56.9 t/s)
+  Run 10/10... done (decode 54.3 t/s)
+
+==========================================================================================
+Prompt   Mode       Prompt    Prefill Decode     Decode      Total Notes
+                       tok      tok/s    tok      tok/s         ms
+------------------------------------------------------------------------------------------
+short    ane            13      148.7      9       17.6       2931 
+short    mlx            13      138.2     13       61.2       3679 
+short    hybrid         13      148.3      9       39.4       6050 save=11ms read=9ms cache=5ms
+
+medium   ane            28      237.5     20       16.4       3645 
+medium   mlx            28      290.0     20       64.5       3836 
+medium   hybrid         28      237.9     20       53.9       6280 save=11ms read=9ms cache=6ms
+
+long     ane            74      268.0     20       17.1       3774 
+long     mlx            74      736.2     20       64.1       3846 
+long     hybrid         74      271.1     20       54.0       6335 save=11ms read=9ms cache=6ms
+
+==========================================================================================

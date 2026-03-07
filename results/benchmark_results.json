@@ -1,0 +1,79 @@
+{
+  "hardware": {
+    "machine": "Mac Studio (2023)",
+    "chip": "Apple M2 Ultra",
+    "cpu_cores": "24 (16P + 8E)",
+    "gpu_cores": 76,
+    "ane_cores": 32,
+    "ane_tops": 31.6,
+    "memory_gb": 192,
+    "bandwidth_gbs": 800,
+    "metal": "Metal 4",
+    "os": "macOS 26 (Tahoe)"
+  },
+  "config": {
+    "max_tokens": 20,
+    "temperature": 0,
+    "runs_per_config": 10,
+    "ane_spatial": 32
+  },
+  "qwen3_5_0_8b": {
+    "model": "Qwen3.5-0.8B",
+    "precision": "FP16",
+    "layers": 24,
+    "hidden_dim": 1024,
+    "results": {
+      "short_13tok": {
+        "ane":    {"prefill_tps": 148.7, "decode_tps": 17.6, "decode_tok": 9, "total_ms": 2931},
+        "mlx":    {"prefill_tps": 138.2, "decode_tps": 61.2, "decode_tok": 13, "total_ms": 3679},
+        "hybrid": {"prefill_tps": 148.3, "decode_tps": 39.4, "decode_tok": 9, "total_ms": 6050,
+                   "save_ms": 11, "read_ms": 9, "cache_ms": 5}
+      },
+      "medium_28tok": {
+        "ane":    {"prefill_tps": 237.5, "decode_tps": 16.4, "decode_tok": 20, "total_ms": 3645},
+        "mlx":    {"prefill_tps": 290.0, "decode_tps": 64.5, "decode_tok": 20, "total_ms": 3836},
+        "hybrid": {"prefill_tps": 237.9, "decode_tps": 53.9, "decode_tok": 20, "total_ms": 6280,
+                   "save_ms": 11, "read_ms": 9, "cache_ms": 6}
+      },
+      "long_74tok": {
+        "ane":    {"prefill_tps": 268.0, "decode_tps": 17.1, "decode_tok": 20, "total_ms": 3774},
+        "mlx":    {"prefill_tps": 736.2, "decode_tps": 64.1, "decode_tok": 20, "total_ms": 3846},
+        "hybrid": {"prefill_tps": 271.1, "decode_tps": 54.0, "decode_tok": 20, "total_ms": 6335,
+                   "save_ms": 11, "read_ms": 9, "cache_ms": 6}
+      }
+    }
+  },
+  "qwen3_5_2b": {
+    "model": "Qwen3.5-2B",
+    "precision": "BF16",
+    "layers": 36,
+    "hidden_dim": 1536,
+    "results": {
+      "short_13tok": {
+        "ane":    {"prefill_tps": 91.7, "decode_tps": 12.4, "decode_tok": 9, "total_ms": 5271},
+        "mlx":    {"prefill_tps": 179.6, "decode_tps": 90.8, "decode_tok": 11, "total_ms": 4076},
+        "hybrid": {"prefill_tps": 92.8, "decode_tps": 22.6, "decode_tok": 9, "total_ms": 8878,
+                   "save_ms": 11, "read_ms": 8, "cache_ms": 5}
+      },
+      "medium_28tok": {
+        "ane":    {"prefill_tps": 160.4, "decode_tps": 12.5, "decode_tok": 20, "total_ms": 6189},
+        "mlx":    {"prefill_tps": 358.0, "decode_tps": 94.1, "decode_tok": 20, "total_ms": 4212},
+        "hybrid": {"prefill_tps": 159.3, "decode_tps": 29.0, "decode_tok": 20, "total_ms": 9281,
+                   "save_ms": 11, "read_ms": 8, "cache_ms": 6}
+      },
+      "long_74tok": {
+        "ane":    {"prefill_tps": 172.7, "decode_tps": 12.7, "decode_tok": 20, "total_ms": 6455},
+        "mlx":    {"prefill_tps": 828.6, "decode_tps": 92.4, "decode_tok": 20, "total_ms": 4274},
+        "hybrid": {"prefill_tps": 173.1, "decode_tps": 29.2, "decode_tok": 20, "total_ms": 9518,
+                   "save_ms": 11, "read_ms": 9, "cache_ms": 6}
+      }
+    }
+  },
+  "power_data_source": "Prior work (same M2 Ultra, powermetrics 100ms sampling)",
+  "power": {
+    "gpu_prefill_w": {"gpu": 62.05, "ane": 0.00, "cpu": 2.34},
+    "gpu_decode_w": {"gpu": 14.17, "ane": 0.00, "cpu": 2.98},
+    "ane_prefill_w": {"gpu": 0.22, "ane": 1.58, "cpu": 3.77},
+    "ane_pure_decode_w": {"gpu": 0.16, "ane": 1.42, "cpu": 5.47}
+  }
+}

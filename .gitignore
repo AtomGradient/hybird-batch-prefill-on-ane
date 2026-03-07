@@ -1,0 +1,9 @@
+build/
+example/
+.DS_Store
+*.dSYM/
+.idea
+mlx/
+mlx-lm/
+mlx-examples/
+mlx-vlm/

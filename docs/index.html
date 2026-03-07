@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANE Batch Prefill for On-Device Parallel LLM Inference</title>
+<style>
+/* ── Anthropic-inspired design tokens ──────────────────────────────── */
+:root {
+  --bg: #FAF9F0;
+  --bg-card: #FFFFFF;
+  --bg-code: #F3F2EA;
+  --bg-nav: rgba(250,249,240,0.92);
+  --text: #1a1a1a;
+  --text-2: #4a4a4a;
+  --text-3: #777;
+  --accent: #CC785C;
+  --accent-light: rgba(204,120,92,0.12);
+  --green: #3a7a4a;
+  --green-bg: rgba(58,122,74,0.08);
+  --blue: #3a5a8a;
+  --blue-bg: rgba(58,90,138,0.08);
+  --purple: #6a4a8a;
+  --purple-bg: rgba(106,74,138,0.08);
+  --border: #e0ddd4;
+  --border-light: #eae7de;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  --max-w: 720px;
+  --max-w-wide: 960px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+::selection { background: rgba(204,120,92,0.3); }
+body {
+  font-family: var(--font-serif);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.2em; text-decoration-thickness: 0.06em; }
+a:hover { color: #a05a3a; }
+
+/* ── Bilingual ─────────────────────────────────────────────────────── */
+.z { display: none; }
+html[lang="zh"] .e { display: none; }
+html[lang="zh"] .z { display: revert; }
+
+/* ── Nav ───────────────────────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg-nav); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-light);
+  padding: 14px 0;
+}
+.nav-inner {
+  max-width: var(--max-w-wide); margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav-brand {
+  font-family: var(--font-sans); font-weight: 600; font-size: 0.9rem;
+  color: var(--text); text-decoration: none;
+}
+.nav-links { display: flex; gap: 18px; align-items: center; }
+.nav-links a {
+  font-family: var(--font-sans); font-size: 0.82rem; color: var(--text-2);
+  text-decoration: none;
+}
+.nav-links a:hover { color: var(--text); }
+.lang-toggle { display: flex; align-items: center; gap: 2px; margin-left: 14px; }
+.lang-btn {
+  background: none; border: 1px solid transparent; cursor: pointer;
+  padding: 2px 8px; color: var(--text-3); font-family: var(--font-sans);
+  font-size: 0.78rem; border-radius: 4px; transition: all 0.2s;
+}
+.lang-btn.active { color: var(--text); background: var(--bg-card); border-color: var(--border); }
+.lang-btn:hover { color: var(--text); }
+
+/* ── Container ─────────────────────────────────────────────────────── */
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.container-wide { max-width: var(--max-w-wide); margin: 0 auto; padding: 0 24px; }
+
+/* ── Hero ──────────────────────────────────────────────────────────── */
+#hero { padding: 64px 0 40px; }
+#hero h1 {
+  font-family: var(--font-sans); font-size: 2rem; font-weight: 700;
+  line-height: 1.25; letter-spacing: -0.02em; margin-bottom: 16px;
+}
+.subtitle {
+  font-size: 1.05rem; color: var(--text-2); margin-bottom: 20px;
+  max-width: 580px;
+}
+.meta-row {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px;
+}
+.tag {
+  display: inline-block; padding: 3px 10px; border-radius: 4px;
+  font-family: var(--font-sans); font-size: 0.72rem; color: var(--text-2);
+  background: var(--bg-code); border: 1px solid var(--border-light);
+}
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 20px 16px; text-align: center;
+}
+.stat-value {
+  font-family: var(--font-sans); font-size: 1.6rem; font-weight: 700;
+  color: var(--accent); letter-spacing: -0.02em;
+}
+.stat-label {
+  font-family: var(--font-sans); font-size: 0.72rem; color: var(--text-3);
+  margin-top: 4px; line-height: 1.3;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────── */
+section { padding: 40px 0; }
+section + section { border-top: 1px solid var(--border-light); }
+section h2 {
+  font-family: var(--font-sans); font-size: 1.25rem; font-weight: 600;
+  letter-spacing: -0.01em; margin-bottom: 16px;
+}
+section h3 {
+  font-family: var(--font-sans); font-size: 0.95rem; font-weight: 600;
+  color: var(--text-2); margin: 24px 0 10px;
+}
+p { margin-bottom: 12px; }
+
+/* ── Findings ──────────────────────────────────────────────────────── */
+.findings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.finding-card {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 20px;
+}
+.finding-card h4 {
+  font-family: var(--font-sans); font-size: 0.88rem; font-weight: 600;
+  margin-bottom: 8px;
+}
+.finding-card p { font-size: 0.85rem; color: var(--text-2); margin: 0; }
+.finding-card.green { border-left: 3px solid var(--green); }
+.finding-card.blue { border-left: 3px solid var(--blue); }
+.finding-card.orange { border-left: 3px solid var(--accent); }
+.finding-card.purple { border-left: 3px solid var(--purple); }
+
+/* ── Tables ────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; margin: 12px 0; }
+table {
+  width: 100%; border-collapse: collapse;
+  font-family: var(--font-sans); font-size: 0.8rem;
+}
+th {
+  padding: 10px 12px; text-align: left; font-weight: 600;
+  border-bottom: 2px solid var(--border); font-size: 0.75rem;
+  color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em;
+}
+td {
+  padding: 9px 12px; border-bottom: 1px solid var(--border-light);
+  font-variant-numeric: tabular-nums;
+}
+.num { text-align: right; }
+.hl { color: var(--green); font-weight: 600; }
+.hl-accent { color: var(--accent); font-weight: 600; }
+tr:hover { background: var(--accent-light); }
+caption {
+  font-family: var(--font-sans); font-size: 0.78rem; color: var(--text-3);
+  text-align: left; padding: 0 0 8px; caption-side: top;
+}
+
+/* ── Architecture flow ─────────────────────────────────────────────── */
+.flow-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 16px 0; }
+.flow-col {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 16px;
+}
+.flow-col h4 {
+  font-family: var(--font-sans); font-size: 0.82rem; font-weight: 600;
+  text-align: center; padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-light);
+}
+.flow-node {
+  padding: 8px 10px; border-radius: 6px;
+  font-family: var(--font-sans); font-size: 0.75rem;
+  margin: 4px 0; line-height: 1.4;
+}
+.fn-input { background: var(--blue-bg); border-left: 3px solid var(--blue); }
+.fn-ane { background: var(--green-bg); border-left: 3px solid var(--green); }
+.fn-gpu { background: var(--accent-light); border-left: 3px solid var(--accent); }
+.fn-cpu { background: #f0f0ea; border-left: 3px solid #999; }
+.fn-io { background: var(--purple-bg); border-left: 3px solid var(--purple); }
+.fn-output { background: var(--bg-code); border-left: 3px solid var(--text-3); font-weight: 600; }
+.flow-arrow {
+  text-align: center; color: var(--text-3); font-size: 0.9rem; line-height: 1.1;
+}
+
+/* ── Concurrent diagram ────────────────────────────────────────────── */
+.concurrent-box {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 20px; margin: 16px 0;
+}
+.concurrent-box p { font-size: 0.88rem; }
+.concurrent-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0;
+}
+.concurrent-card {
+  padding: 14px; border-radius: 6px; text-align: center;
+  font-family: var(--font-sans); font-size: 0.8rem; line-height: 1.5;
+}
+.concurrent-card strong { display: block; margin-bottom: 4px; }
+.cc-ane { background: var(--green-bg); border: 1px solid rgba(58,122,74,0.2); }
+.cc-gpu { background: var(--accent-light); border: 1px solid rgba(204,120,92,0.2); }
+
+/* ── Power table ───────────────────────────────────────────────────── */
+.callout {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 16px 20px; margin: 14px 0;
+  font-size: 0.88rem;
+}
+
+/* ── Bar chart ─────────────────────────────────────────────────────── */
+.bar-section { margin: 14px 0; }
+.bar-title { font-family: var(--font-sans); font-size: 0.75rem; color: var(--text-3); margin-bottom: 6px; }
+.bar-row { display: flex; align-items: center; margin: 3px 0; gap: 8px; }
+.bar-label { width: 54px; font-family: var(--font-sans); font-size: 0.72rem; color: var(--text-3); text-align: right; flex-shrink: 0; }
+.bar {
+  height: 20px; border-radius: 3px; display: flex; align-items: center;
+  padding: 0 8px; font-family: var(--font-sans); font-size: 0.68rem;
+  color: #fff; font-weight: 600; min-width: 36px; transition: width 0.3s;
+}
+.bar-ane { background: var(--green); }
+.bar-mlx { background: var(--accent); }
+.bar-hybrid { background: var(--purple); }
+
+/* ── Footer ────────────────────────────────────────────────────────── */
+footer {
+  padding: 40px 0; border-top: 1px solid var(--border-light);
+  text-align: center; font-family: var(--font-sans); font-size: 0.8rem;
+  color: var(--text-3);
+}
+.citation-box {
+  background: var(--bg-code); border: 1px solid var(--border-light);
+  border-radius: 6px; padding: 14px 16px; margin: 16px auto;
+  max-width: 560px; text-align: left;
+  font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-2);
+  white-space: pre-wrap; line-height: 1.5;
+}
+
+/* ── Timeline diagram ───────────────────────────────────────────── */
+.timeline-box {
+  background: var(--bg-card); border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 20px; margin: 16px 0; overflow-x: auto;
+}
+.timeline {
+  display: grid; grid-template-columns: 80px 1fr; gap: 0;
+  font-family: var(--font-sans); font-size: 0.72rem; min-width: 600px;
+}
+.tl-label {
+  padding: 6px 8px; font-weight: 600; color: var(--text-2);
+  border-right: 1px solid var(--border-light); display: flex; align-items: center;
+}
+.tl-row { display: flex; padding: 6px 0; gap: 3px; align-items: center; }
+.tl-block {
+  padding: 6px 8px; border-radius: 4px; white-space: nowrap;
+  font-size: 0.7rem; font-weight: 500; text-align: center;
+}
+.tl-ane { background: var(--green-bg); border: 1px solid rgba(58,122,74,0.25); color: var(--green); }
+.tl-gpu { background: var(--accent-light); border: 1px solid rgba(204,120,92,0.25); color: var(--accent); }
+.tl-io { background: var(--purple-bg); border: 1px solid rgba(106,74,138,0.25); color: var(--purple); }
+.tl-idle { background: #f0f0ea; border: 1px dashed var(--border); color: var(--text-3); }
+.tl-user { background: var(--blue-bg); border: 1px solid rgba(58,90,138,0.25); color: var(--blue); }
+.tl-arrow { color: var(--text-3); font-size: 0.8rem; padding: 0 2px; }
+.tl-sep { grid-column: 1 / -1; border-top: 1px dashed var(--border-light); margin: 4px 0; }
+.tl-note { grid-column: 1 / -1; text-align: center; font-size: 0.72rem; color: var(--text-3); padding: 6px; font-style: italic; }
+
+@media (max-width: 640px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .findings-grid { grid-template-columns: 1fr; }
+  .flow-columns { grid-template-columns: 1fr; }
+  .concurrent-grid { grid-template-columns: 1fr; }
+  #hero h1 { font-size: 1.4rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────── -->
+<nav>
+<div class="nav-inner">
+  <a class="nav-brand" href="#">ANE-LM Batch Bench</a>
+  <div class="nav-links">
+    <a href="#results"><span class="e">Results</span><span class="z">结果</span></a>
+    <a href="#architecture"><span class="e">Architecture</span><span class="z">架构</span></a>
+    <a href="#power"><span class="e">Power</span><span class="z">能耗</span></a>
+    <a href="paper.pdf"><span class="e">Paper</span><span class="z">论文</span></a>
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="en" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" data-lang="zh" onclick="setLang('zh')">中文</button>
+    </div>
+  </div>
+</div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────── -->
+<div id="hero" class="container">
+  <h1>
+    <span class="e">ANE Batch Prefill for On-Device Parallel LLM Inference</span>
+    <span class="z">ANE 批量预填充：端侧并行 LLM 推理</span>
+  </h1>
+  <p class="subtitle">
+    <span class="e">Enabling concurrent ANE prefill and GPU decode on Apple Silicon via batched ANE dispatch with the private AppleNeuralEngine framework.</span>
+    <span class="z">通过 AppleNeuralEngine 私有框架的批量派发，在 Apple Silicon 上实现 ANE 预填充与 GPU 解码的并发执行。</span>
+  </p>
+  <div class="meta-row">
+    <span class="tag">M2 Ultra &middot; 76 GPU &middot; 32 ANE</span>
+    <span class="tag">Qwen3.5-0.8B / 2B</span>
+    <span class="tag">ANE_SPATIAL = 32</span>
+    <span class="tag"><span class="e">Companion to </span><span class="z">配套 </span><a href="https://github.com/AtomGradient/hybrid-ane-mlx-bench">HybridInference</a></span>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value">11.3&times;</div>
+      <div class="stat-label"><span class="e">Prefill speedup<br>vs sequential dispatch</span><span class="z">预填充加速<br>相比逐 token 派发</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">268</div>
+      <div class="stat-label"><span class="e">tok/s batch prefill<br>Qwen3.5-0.8B</span><span class="z">tok/s 批量预填充<br>Qwen3.5-0.8B</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">&lt;30ms</div>
+      <div class="stat-label"><span class="e">State transfer<br>overhead</span><span class="z">状态迁移<br>开销</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">282&times;</div>
+      <div class="stat-label"><span class="e">GPU power reduction<br>during ANE prefill</span><span class="z">ANE 预填充时<br>GPU 功耗降低</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Key Findings ────────────────────────────────────────────────── -->
+<section id="findings" class="container">
+  <h2><span class="e">Key Findings</span><span class="z">核心发现</span></h2>
+  <div class="findings-grid">
+    <div class="finding-card green">
+      <h4><span class="e">11.3&times; Prefill Speedup</span><span class="z">11.3 倍预填充加速</span></h4>
+      <p><span class="e">ANE batch prefill (32 tok/dispatch) achieves 268 tok/s vs 23.7 tok/s for sequential dispatch from our prior work, making private API prefill practical for interactive use.</span><span class="z">ANE 批量预填充（32 tok/次派发）达到 268 tok/s，而前作中逐 token 派发仅 23.7 tok/s，使私有 API 预填充可用于交互场景。</span></p>
+    </div>
+    <div class="finding-card blue">
+      <h4><span class="e">ANE Beats GPU on Short Prompts</span><span class="z">短提示词 ANE 快于 GPU</span></h4>
+      <p><span class="e">At 13 tokens, ANE batch prefill (149 tok/s) outperforms GPU prefill (138 tok/s) for 0.8B. This short-prompt advantage is critical for chatbots and code completion.</span><span class="z">在 13 token 时，0.8B 模型 ANE 批量预填充（149 tok/s）超越 GPU（138 tok/s）。短提示优势对聊天和代码补全至关重要。</span></p>
+    </div>
+    <div class="finding-card orange">
+      <h4><span class="e">Concurrent Pipeline Feasibility</span><span class="z">并发流水线可行性</span></h4>
+      <p><span class="e">ANE prefill uses only 0.22 W GPU power, freeing the GPU to simultaneously decode another request at ~90 tok/s. Zero GPU contention between prefill and decode.</span><span class="z">ANE 预填充仅消耗 0.22 W GPU 功耗，GPU 可同时对另一请求解码（~90 tok/s）。预填充与解码之间零 GPU 竞争。</span></p>
+    </div>
+    <div class="finding-card purple">
+      <h4><span class="e">Negligible Transfer Overhead</span><span class="z">可忽略的状态迁移开销</span></h4>
+      <p><span class="e">State serialization (save + read + cache construction) totals &lt;30 ms for both 0.8B and 2B. The binary format does not bottleneck the hybrid pipeline.</span><span class="z">状态序列化（保存+读取+缓存构建）对 0.8B 和 2B 总计 &lt;30 ms。二进制格式不会成为混合流水线瓶颈。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Results ──────────────────────────────────────────────────────── -->
+<section id="results" class="container-wide">
+  <h2><span class="e">Benchmark Results</span><span class="z">基准测试结果</span></h2>
+  <p style="font-size:0.88rem;color:var(--text-2)"><span class="e">All values averaged over 10 runs, temperature = 0, max 20 decode tokens. M2 Ultra, 192 GB.</span><span class="z">所有数值为 10 次运行的平均值，温度 = 0，最大解码 20 token。M2 Ultra, 192 GB。</span></p>
+
+  <h3>Qwen3.5-0.8B FP16</h3>
+  <div class="table-wrap">
+  <table>
+    <caption><span class="e">Table 1. Throughput comparison: Pure ANE, Pure MLX (GPU), and Hybrid (ANE prefill + MLX decode).</span><span class="z">表 1. 吞吐量对比：纯 ANE、纯 MLX (GPU) 和混合模式（ANE 预填充 + MLX 解码）。</span></caption>
+    <thead>
+      <tr>
+        <th><span class="e">Prompt</span><span class="z">提示词</span></th>
+        <th><span class="e">Mode</span><span class="z">模式</span></th>
+        <th class="num"><span class="e">Tokens</span><span class="z">Token</span></th>
+        <th class="num"><span class="e">Prefill tok/s</span><span class="z">预填充 tok/s</span></th>
+        <th class="num"><span class="e">Decode tok/s</span><span class="z">解码 tok/s</span></th>
+        <th class="num"><span class="e">Total ms</span><span class="z">总耗时 ms</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="3">Short</td><td>ANE</td><td class="num">13</td><td class="num hl">148.7</td><td class="num">17.6</td><td class="num">2,931</td></tr>
+      <tr><td>MLX</td><td class="num">13</td><td class="num">138.2</td><td class="num hl">61.2</td><td class="num">3,679</td></tr>
+      <tr><td>Hybrid</td><td class="num">13</td><td class="num">148.3</td><td class="num">39.4</td><td class="num">6,050</td></tr>
+      <tr><td rowspan="3">Medium</td><td>ANE</td><td class="num">28</td><td class="num">237.5</td><td class="num">16.4</td><td class="num">3,645</td></tr>
+      <tr><td>MLX</td><td class="num">28</td><td class="num">290.0</td><td class="num hl">64.5</td><td class="num">3,836</td></tr>
+      <tr><td>Hybrid</td><td class="num">28</td><td class="num">237.9</td><td class="num">53.9</td><td class="num">6,280</td></tr>
+      <tr><td rowspan="3">Long</td><td>ANE</td><td class="num">74</td><td class="num">268.0</td><td class="num">17.1</td><td class="num">3,774</td></tr>
+      <tr><td>MLX</td><td class="num">74</td><td class="num hl">736.2</td><td class="num hl">64.1</td><td class="num">3,846</td></tr>
+      <tr><td>Hybrid</td><td class="num">74</td><td class="num">271.1</td><td class="num">54.0</td><td class="num">6,335</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Qwen3.5-2B BF16</h3>
+  <div class="table-wrap">
+  <table>
+    <caption><span class="e">Table 2. Throughput comparison for the larger 2B model.</span><span class="z">表 2. 较大 2B 模型的吞吐量对比。</span></caption>
+    <thead>
+      <tr>
+        <th><span class="e">Prompt</span><span class="z">提示词</span></th>
+        <th><span class="e">Mode</span><span class="z">模式</span></th>
+        <th class="num"><span class="e">Tokens</span><span class="z">Token</span></th>
+        <th class="num"><span class="e">Prefill tok/s</span><span class="z">预填充 tok/s</span></th>
+        <th class="num"><span class="e">Decode tok/s</span><span class="z">解码 tok/s</span></th>
+        <th class="num"><span class="e">Total ms</span><span class="z">总耗时 ms</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="3">Short</td><td>ANE</td><td class="num">13</td><td class="num">91.7</td><td class="num">12.4</td><td class="num">5,271</td></tr>
+      <tr><td>MLX</td><td class="num">13</td><td class="num">179.6</td><td class="num hl">90.8</td><td class="num">4,076</td></tr>
+      <tr><td>Hybrid</td><td class="num">13</td><td class="num">92.8</td><td class="num">22.6</td><td class="num">8,878</td></tr>
+      <tr><td rowspan="3">Medium</td><td>ANE</td><td class="num">28</td><td class="num">160.4</td><td class="num">12.5</td><td class="num">6,189</td></tr>
+      <tr><td>MLX</td><td class="num">28</td><td class="num hl">358.0</td><td class="num hl">94.1</td><td class="num">4,212</td></tr>
+      <tr><td>Hybrid</td><td class="num">28</td><td class="num">159.3</td><td class="num">29.0</td><td class="num">9,281</td></tr>
+      <tr><td rowspan="3">Long</td><td>ANE</td><td class="num">74</td><td class="num">172.7</td><td class="num">12.7</td><td class="num">6,455</td></tr>
+      <tr><td>MLX</td><td class="num">74</td><td class="num hl">828.6</td><td class="num hl">92.4</td><td class="num">4,274</td></tr>
+      <tr><td>Hybrid</td><td class="num">74</td><td class="num">173.1</td><td class="num">29.2</td><td class="num">9,518</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- Prefill comparison bar charts -->
+  <h3><span class="e">Prefill Throughput: 0.8B</span><span class="z">预填充吞吐量：0.8B</span></h3>
+  <div class="bar-section">
+    <div class="bar-title">Short (13 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:20%">148.7</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:19%">138.2</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:20%">148.3</div></div>
+  </div>
+  <div class="bar-section">
+    <div class="bar-title">Medium (28 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:32%">237.5</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:39%">290.0</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:32%">237.9</div></div>
+  </div>
+  <div class="bar-section">
+    <div class="bar-title">Long (74 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:36%">268.0</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:100%">736.2</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:37%">271.1</div></div>
+  </div>
+
+  <h3><span class="e">Prefill Throughput: 2B</span><span class="z">预填充吞吐量：2B</span></h3>
+  <div class="bar-section">
+    <div class="bar-title">Short (13 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:11%">91.7</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:22%">179.6</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:11%">92.8</div></div>
+  </div>
+  <div class="bar-section">
+    <div class="bar-title">Medium (28 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:19%">160.4</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:43%">358.0</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:19%">159.3</div></div>
+  </div>
+  <div class="bar-section">
+    <div class="bar-title">Long (74 tok)</div>
+    <div class="bar-row"><span class="bar-label">ANE</span><div class="bar bar-ane" style="width:21%">172.7</div></div>
+    <div class="bar-row"><span class="bar-label">MLX</span><div class="bar bar-mlx" style="width:100%">828.6</div></div>
+    <div class="bar-row"><span class="bar-label">Hybrid</span><div class="bar bar-hybrid" style="width:21%">173.1</div></div>
+  </div>
+
+  <!-- Batch vs sequential -->
+  <h3><span class="e">Batch vs Sequential Dispatch (74 tokens)</span><span class="z">批量 vs 逐 token 派发（74 tokens）</span></h3>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th><span class="e">Model</span><span class="z">模型</span></th>
+        <th><span class="e">Dispatch Mode</span><span class="z">派发模式</span></th>
+        <th class="num"><span class="e">Prefill tok/s</span><span class="z">预填充 tok/s</span></th>
+        <th class="num"><span class="e">Speedup</span><span class="z">加速比</span></th>
+        <th><span class="e">Source</span><span class="z">来源</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="3">0.8B</td><td><span class="e">Sequential (1 tok/dispatch)</span><span class="z">逐 token（1 tok/次）</span></td><td class="num">23.7</td><td class="num">1.0&times;</td><td><span class="e">Prior work</span><span class="z">前作</span></td></tr>
+      <tr><td><span class="e">Batch (32 tok/dispatch)</span><span class="z">批量（32 tok/次）</span></td><td class="num hl">268.0</td><td class="num hl-accent">11.3&times;</td><td><span class="e">This work</span><span class="z">本文</span></td></tr>
+      <tr><td><span class="e">GPU baseline (MLX)</span><span class="z">GPU 基线（MLX）</span></td><td class="num">736.2</td><td class="num">31.1&times;</td><td><span class="e">This work</span><span class="z">本文</span></td></tr>
+      <tr style="border-top:2px solid var(--border)"><td rowspan="3">2B</td><td><span class="e">Sequential (1 tok/dispatch)</span><span class="z">逐 token（1 tok/次）</span></td><td class="num">23.7</td><td class="num">1.0&times;</td><td><span class="e">Prior work</span><span class="z">前作</span></td></tr>
+      <tr><td><span class="e">Batch (32 tok/dispatch)</span><span class="z">批量（32 tok/次）</span></td><td class="num hl">172.7</td><td class="num hl-accent">7.3&times;</td><td><span class="e">This work</span><span class="z">本文</span></td></tr>
+      <tr><td><span class="e">GPU baseline (MLX)</span><span class="z">GPU 基线（MLX）</span></td><td class="num">828.6</td><td class="num">35.0&times;</td><td><span class="e">This work</span><span class="z">本文</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- State overhead -->
+  <h3><span class="e">State Transfer Overhead</span><span class="z">状态迁移开销</span></h3>
+  <div class="table-wrap">
+  <table style="max-width:480px">
+    <thead><tr><th><span class="e">Model</span><span class="z">模型</span></th><th class="num"><span class="e">Save</span><span class="z">保存</span></th><th class="num"><span class="e">Read</span><span class="z">读取</span></th><th class="num"><span class="e">Cache</span><span class="z">构建</span></th><th class="num"><span class="e">Total</span><span class="z">总计</span></th></tr></thead>
+    <tbody>
+      <tr><td>0.8B</td><td class="num">12 ms</td><td class="num">9 ms</td><td class="num">6 ms</td><td class="num">27 ms</td></tr>
+      <tr><td>2B</td><td class="num">11 ms</td><td class="num">9 ms</td><td class="num">6 ms</td><td class="num">26 ms</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ── Architecture ────────────────────────────────────────────────── -->
+<section id="architecture" class="container-wide">
+  <h2><span class="e">Architecture</span><span class="z">架构</span></h2>
+  <div class="flow-columns">
+    <div class="flow-col">
+      <h4>Pure ANE</h4>
+      <div class="flow-node fn-input"><span class="e">Prompt tokens</span><span class="z">提示词 tokens</span></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-ane">ANE Batch Prefill<br><small>32 tok/dispatch</small></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-cpu">CPU: RMSNorm, RoPE, SSM, GQA</div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-ane">ANE Sequential Decode</div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-output">~12&ndash;18 tok/s</div>
+    </div>
+    <div class="flow-col">
+      <h4>Pure MLX (GPU)</h4>
+      <div class="flow-node fn-input"><span class="e">Prompt tokens</span><span class="z">提示词 tokens</span></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-gpu">GPU Prefill (Metal)</div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-gpu">GPU Decode (Metal)</div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-output">~61&ndash;94 tok/s</div>
+    </div>
+    <div class="flow-col">
+      <h4><span class="e">Hybrid (This Work)</span><span class="z">混合（本文）</span></h4>
+      <div class="flow-node fn-input"><span class="e">Prompt tokens</span><span class="z">提示词 tokens</span></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-ane">ANE Batch Prefill<br><small>32 tok/dispatch</small></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-io"><span class="e">State Serialize (&lt;30 ms)</span><span class="z">状态序列化 (&lt;30 ms)</span></div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-gpu">MLX GPU Decode</div>
+      <div class="flow-arrow">&darr;</div>
+      <div class="flow-node fn-output">~23&ndash;54 tok/s</div>
+    </div>
+  </div>
+
+  <h3><span class="e">Concurrent Pipeline</span><span class="z">并发流水线</span></h3>
+  <div class="concurrent-box">
+    <p><span class="e">Since ANE prefill uses only <strong>0.22 W GPU power</strong>, the GPU can simultaneously decode another request:</span><span class="z">由于 ANE 预填充仅消耗 <strong>0.22 W GPU 功耗</strong>，GPU 可同时对另一请求进行解码：</span></p>
+    <div class="concurrent-grid">
+      <div class="concurrent-card cc-ane">
+        <strong>Request k+1</strong>
+        <span class="e">ANE Batch Prefill</span><span class="z">ANE 批量预填充</span><br>
+        149&ndash;268 tok/s &middot; ~1.8 W
+      </div>
+      <div class="concurrent-card cc-gpu">
+        <strong>Request k</strong>
+        <span class="e">GPU Decode</span><span class="z">GPU 解码</span><br>
+        ~90 tok/s &middot; ~14 W
+      </div>
+    </div>
+    <p style="font-size:0.82rem;color:var(--text-3);text-align:center;margin:0"><span class="e">Total ~15.8 W vs 76 W if both phases used GPU. <strong>79% power reduction</strong> for the prefill component.</span><span class="z">总计约 15.8 W，若两阶段均用 GPU 则为 76 W。预填充部分<strong>功耗降低 79%</strong>。</span></p>
+  </div>
+
+  <h3><span class="e">Seamless Conversation Pipeline</span><span class="z">顺滑对话流水线</span></h3>
+  <p style="font-size:0.88rem;color:var(--text-2)"><span class="e">In a single conversation, the ANE prefills the user's new input <em>while</em> the GPU is still decoding the previous response. The moment decode finishes, the next decode can begin immediately &mdash; zero wait time between turns.</span><span class="z">在单轮对话中，GPU 解码上一轮回复的<em>同时</em>，ANE 已开始预填充用户的新输入。解码结束的瞬间，下一轮解码即可立即开始 &mdash; 轮次之间零等待。</span></p>
+  <div class="timeline-box">
+    <div class="timeline">
+      <!-- Header -->
+      <div class="tl-label" style="font-size:0.68rem;color:var(--text-3)"><span class="e">Hardware</span><span class="z">硬件</span></div>
+      <div class="tl-row" style="font-size:0.68rem;color:var(--text-3);justify-content:center"><span class="e">Time &rarr;</span><span class="z">时间 &rarr;</span></div>
+      <div class="tl-sep"></div>
+
+      <!-- Turn 1 -->
+      <div class="tl-note"><span class="e">Turn 1: User sends &ldquo;Hello&rdquo;</span><span class="z">第 1 轮：用户发送「你好」</span></div>
+
+      <div class="tl-label">ANE</div>
+      <div class="tl-row">
+        <div class="tl-block tl-ane" style="flex:1"><span class="e">Prefill &ldquo;Hello&rdquo;</span><span class="z">预填充「你好」</span></div>
+        <div class="tl-block tl-idle" style="flex:0.3"><span class="e">idle</span><span class="z">空闲</span></div>
+        <div class="tl-block tl-ane" style="flex:1.5"><span class="e">Prefill Turn 2 input</span><span class="z">预填充第 2 轮输入</span></div>
+      </div>
+
+      <div class="tl-label">GPU</div>
+      <div class="tl-row">
+        <div class="tl-block tl-idle" style="flex:0.3"><span class="e">idle</span><span class="z">空闲</span></div>
+        <div class="tl-block tl-io" style="flex:0.2">&darr;</div>
+        <div class="tl-block tl-gpu" style="flex:2"><span class="e">Decode response 1</span><span class="z">解码回复 1</span></div>
+        <div class="tl-block tl-io" style="flex:0.2">&darr;</div>
+        <div class="tl-block tl-gpu" style="flex:1.5"><span class="e">Decode response 2</span><span class="z">解码回复 2</span></div>
+      </div>
+
+      <div class="tl-label"><span class="e">User</span><span class="z">用户</span></div>
+      <div class="tl-row">
+        <div class="tl-block tl-user" style="flex:0.3"><span class="e">sends</span><span class="z">发送</span></div>
+        <div class="tl-block tl-idle" style="flex:2"><span class="e">reading response 1...</span><span class="z">阅读回复 1...</span></div>
+        <div class="tl-block tl-user" style="flex:0.3"><span class="e">sends</span><span class="z">发送</span></div>
+        <div class="tl-block tl-idle" style="flex:1.5"><span class="e">reading...</span><span class="z">阅读...</span></div>
+      </div>
+
+      <div class="tl-sep"></div>
+      <div class="tl-note">
+        <span class="e">&uarr; While GPU decodes Turn 1, ANE already prefills Turn 2 &rarr; <strong>instant decode start</strong></span>
+        <span class="z">&uarr; GPU 解码第 1 轮时，ANE 已预填充第 2 轮 &rarr; <strong>解码瞬间启动</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <p style="margin:0"><span class="e"><strong>Key insight:</strong> In GPU-only mode, the user must wait for both prefill + decode sequentially each turn. With the hybrid pipeline, the ANE prefills the next input <em>during</em> the user's reading time, so TTFT for turn 2+ is just state transfer (~27 ms).</span><span class="z"><strong>核心洞察：</strong>纯 GPU 模式下，每轮用户都要等待预填充+解码串行完成。混合流水线中，ANE 在用户阅读<em>期间</em>预填充下一轮输入，因此第 2 轮起 TTFT 仅为状态迁移时间（~27 ms）。</span></p>
+  </div>
+
+  <h3><span class="e">Multi-Turn Timing Comparison</span><span class="z">多轮对话时间对比</span></h3>
+  <p style="font-size:0.85rem;color:var(--text-2)"><span class="e">Scenario: 3-turn conversation, each turn 74-token input, 100-token response. Qwen3.5-0.8B on M2 Ultra.</span><span class="z">场景：3 轮对话，每轮 74 token 输入，100 token 回复。Qwen3.5-0.8B，M2 Ultra。</span></p>
+  <div class="table-wrap">
+  <table>
+    <caption><span class="e">User-perceived latency per turn. TTFT = time from send to first token.</span><span class="z">用户感知延迟。TTFT = 发送到首 token 的时间。</span></caption>
+    <thead>
+      <tr>
+        <th></th>
+        <th class="num"><span class="e">Prefill</span><span class="z">预填充</span></th>
+        <th class="num"><span class="e">Transfer</span><span class="z">迁移</span></th>
+        <th class="num"><span class="e">Decode (100 tok)</span><span class="z">解码 (100 tok)</span></th>
+        <th class="num">TTFT</th>
+        <th class="num"><span class="e">Total/turn</span><span class="z">每轮总计</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan="6" style="font-weight:600;background:var(--bg-code);font-size:0.75rem"><span class="e">Pure MLX (GPU only, sequential)</span><span class="z">纯 MLX（仅 GPU，串行）</span></td>
+      </tr>
+      <tr>
+        <td><span class="e">Every turn</span><span class="z">每一轮</span></td>
+        <td class="num">101 ms</td><td class="num">&mdash;</td><td class="num">1,562 ms</td>
+        <td class="num">101 ms</td><td class="num">1,663 ms</td>
+      </tr>
+      <tr>
+        <td colspan="6" style="font-weight:600;background:var(--green-bg);font-size:0.75rem"><span class="e">Hybrid Concurrent (ANE prefill overlapped with user reading)</span><span class="z">混合并发（ANE 预填充与用户阅读重叠）</span></td>
+      </tr>
+      <tr>
+        <td><span class="e">Turn 1 (cold)</span><span class="z">第 1 轮（冷启动）</span></td>
+        <td class="num">276 ms</td><td class="num">27 ms</td><td class="num">1,562 ms</td>
+        <td class="num">303 ms</td><td class="num">1,865 ms</td>
+      </tr>
+      <tr>
+        <td><span class="e">Turn 2+ (warm)</span><span class="z">第 2 轮起（热）</span></td>
+        <td class="num hl"><span class="e">hidden*</span><span class="z">隐藏*</span></td><td class="num">27 ms</td><td class="num">1,562 ms</td>
+        <td class="num hl">27 ms</td><td class="num">1,589 ms</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:0.78rem;color:var(--text-3)"><span class="e">*Prefill for turn N+1 executes on ANE while user reads turn N response. By the time user sends next message, prefill is complete. GPU decode uses pure MLX speed since it runs independently.</span><span class="z">*第 N+1 轮的预填充在 ANE 上执行，与用户阅读第 N 轮回复同时进行。用户发送下一条消息时，预填充已完成。GPU 解码使用纯 MLX 速度，因为独立运行。</span></p>
+
+  <div class="concurrent-grid" style="margin-top:14px">
+    <div class="callout" style="border-left:3px solid var(--accent)">
+      <p style="margin:0;font-size:0.85rem"><span class="e"><strong>3-turn total (Pure MLX):</strong><br>3 &times; 1,663 = <strong>4,989 ms</strong><br>TTFT every turn: 101 ms</span><span class="z"><strong>3 轮总计（纯 MLX）：</strong><br>3 &times; 1,663 = <strong>4,989 ms</strong><br>每轮 TTFT：101 ms</span></p>
+    </div>
+    <div class="callout" style="border-left:3px solid var(--green)">
+      <p style="margin:0;font-size:0.85rem"><span class="e"><strong>3-turn total (Hybrid):</strong><br>1,865 + 2 &times; 1,589 = <strong>5,043 ms</strong><br>TTFT turn 2+: <strong>27 ms</strong> (3.7&times; faster)</span><span class="z"><strong>3 轮总计（混合）：</strong><br>1,865 + 2 &times; 1,589 = <strong>5,043 ms</strong><br>第 2 轮起 TTFT：<strong>27 ms</strong>（快 3.7 倍）</span></p>
+    </div>
+  </div>
+  <div class="callout" style="border-left:3px solid var(--accent);background:var(--accent-light)">
+    <p style="margin:0;font-size:0.92rem"><span class="e"><strong>Total time is comparable, but hybrid delivers 3.7&times; faster TTFT from turn 2 onwards &mdash; the user sees the first token almost instantly. Meanwhile, the GPU's thermal budget is preserved since ANE handles prefill at only 1.8 W instead of 62 W.</strong></span><span class="z"><strong>总时间相当，但混合模式从第 2 轮起 TTFT 快 3.7 倍 &mdash; 用户几乎瞬间看到首 token。同时，由于 ANE 仅以 1.8 W 而非 62 W 处理预填充，GPU 热预算得以保留。</strong></span></p>
+  </div>
+</section>
+
+<!-- ── Power ────────────────────────────────────────────────────────── -->
+<section id="power" class="container">
+  <h2><span class="e">Power Analysis</span><span class="z">能耗分析</span></h2>
+  <p style="font-size:0.88rem;color:var(--text-2)"><span class="e">Power data from our prior work on the same M2 Ultra, measured via <code>powermetrics</code> at 100 ms sampling intervals.</span><span class="z">功耗数据来自前作，使用同一台 M2 Ultra，通过 <code>powermetrics</code> 以 100 ms 间隔采样。</span></p>
+  <div class="table-wrap">
+  <table>
+    <caption><span class="e">Table 3. Per-phase power consumption (Qwen3.5-0.8B FP16).</span><span class="z">表 3. 各阶段功耗（Qwen3.5-0.8B FP16）。</span></caption>
+    <thead>
+      <tr>
+        <th><span class="e">Phase</span><span class="z">阶段</span></th>
+        <th class="num">GPU (W)</th><th class="num">ANE (W)</th><th class="num">CPU (W)</th>
+        <th class="num"><span class="e">Total</span><span class="z">总计</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="e">GPU prefill (compute-bound)</span><span class="z">GPU 预填充（计算密集）</span></td><td class="num" style="color:#c44">62.05</td><td class="num">0.00</td><td class="num">2.34</td><td class="num">64.39 W</td></tr>
+      <tr><td><span class="e">GPU decode (bandwidth-bound)</span><span class="z">GPU 解码（带宽受限）</span></td><td class="num">14.17</td><td class="num">0.00</td><td class="num">2.98</td><td class="num">17.15 W</td></tr>
+      <tr><td><span class="e">ANE prefill (private API)</span><span class="z">ANE 预填充（私有 API）</span></td><td class="num hl">0.22</td><td class="num">1.58</td><td class="num">3.77</td><td class="num hl">5.57 W</td></tr>
+      <tr><td><span class="e">ANE pure decode</span><span class="z">ANE 纯解码</span></td><td class="num">0.16</td><td class="num">1.42</td><td class="num">5.47</td><td class="num">7.05 W</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <p style="margin:0"><span class="e"><strong>Mobile implication:</strong> On A-series devices (TDP ~3&ndash;8 W), GPU prefill at 62 W immediately triggers thermal throttling. ANE prefill at ~1.8 W fits within the mobile thermal envelope, enabling sustained inference without clock-speed degradation.</span><span class="z"><strong>移动端意义：</strong>在 A 系列设备上（TDP 约 3&ndash;8 W），62 W 的 GPU 预填充会立即触发温控降频。ANE 预填充仅约 1.8 W，在移动端热设计功耗范围内，可实现持续推理而不降频。</span></p>
+  </div>
+</section>
+
+<!-- ── Hardware ─────────────────────────────────────────────────────── -->
+<section id="hardware" class="container">
+  <h2><span class="e">Test Hardware</span><span class="z">测试硬件</span></h2>
+  <div class="table-wrap">
+  <table style="max-width:420px">
+    <tbody>
+      <tr><td style="font-weight:600"><span class="e">Machine</span><span class="z">机型</span></td><td>Mac Studio (2023)</td></tr>
+      <tr><td style="font-weight:600"><span class="e">Chip</span><span class="z">芯片</span></td><td>Apple M2 Ultra</td></tr>
+      <tr><td style="font-weight:600"><span class="e">CPU</span><span class="z">CPU</span></td><td>24 cores (16P + 8E)</td></tr>
+      <tr><td style="font-weight:600">GPU</td><td>76 cores</td></tr>
+      <tr><td style="font-weight:600">ANE</td><td>32 cores (31.6 TOPS)</td></tr>
+      <tr><td style="font-weight:600"><span class="e">Memory</span><span class="z">内存</span></td><td>192 GB unified</td></tr>
+      <tr><td style="font-weight:600"><span class="e">Bandwidth</span><span class="z">带宽</span></td><td>800 GB/s</td></tr>
+      <tr><td style="font-weight:600">Metal</td><td>Metal 4</td></tr>
+      <tr><td style="font-weight:600">OS</td><td>macOS 26 (Tahoe)</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ── Footer ──────────────────────────────────────────────────────── -->
+<footer class="container">
+  <p>
+    <a href="paper.pdf"><span class="e">Paper PDF</span><span class="z">论文 PDF</span></a> &middot;
+    <a href="https://github.com/nicekid1/ANE-LM-Batch-Bench">GitHub</a> &middot;
+    <span class="e">Companion to </span><span class="z">配套 </span><a href="https://github.com/AtomGradient/hybrid-ane-mlx-bench">HybridInference</a>
+  </p>
+  <div class="citation-box">@misc{atomgradient2026batchprefill,
+  title  = {ANE Batch Prefill for On-Device Parallel LLM Inference},
+  author = {AtomGradient},
+  year   = {2026},
+  url    = {https://github.com/nicekid1/ANE-LM-Batch-Bench}
+}</div>
+  <p style="margin-top:14px">&copy; 2026 AtomGradient</p>
+</footer>
+
+<script>
+function setLang(lang) {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.lang-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.lang === lang);
+  });
+  try { localStorage.setItem('pref-lang', lang); } catch(e) {}
+}
+(function() {
+  var saved = 'en';
+  try { saved = localStorage.getItem('pref-lang') || 'en'; } catch(e) {}
+  if (saved === 'zh') setLang('zh');
+})();
+</script>
+</body>
+</html>

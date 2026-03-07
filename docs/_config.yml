@@ -1,0 +1,3 @@
+title: ANE Batch Prefill for On-Device Parallel LLM Inference
+description: Enabling concurrent ANE prefill and GPU decode on Apple Silicon via batched ANE dispatch
+theme: null
