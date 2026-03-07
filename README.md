@@ -4,7 +4,7 @@
 
 Enabling concurrent ANE prefill and GPU decode on Apple Silicon via batched ANE dispatch with the private `AppleNeuralEngine.framework`.
 
-[Paper PDF](https://nicekid1.github.io/ANE-LM-Batch-Bench/paper.pdf) · [Project Page](https://nicekid1.github.io/ANE-LM-Batch-Bench/) · Companion to [HybridInference](https://github.com/AtomGradient/hybrid-ane-mlx-bench)
+[Paper PDF](https://atomgradient.github.io/hybird-batch-prefill-on-ane/paper.pdf) · [Project Page](https://atomgradient.github.io/hybird-batch-prefill-on-ane/) · Companion to [hybrid-ane-mlx-bench](https://github.com/AtomGradient/hybrid-ane-mlx-bench)
 
 ## Key Results
 
@@ -158,7 +158,7 @@ python scripts/hybrid_decode.py --state /tmp/ane_state.bin --model /path/to/mode
   title  = {ANE Batch Prefill for On-Device Parallel LLM Inference},
   author = {AtomGradient},
   year   = {2026},
-  url    = {https://github.com/nicekid1/ANE-LM-Batch-Bench}
+  url    = {https://github.com/AtomGradient/hybird-batch-prefill-on-ane}
 }
 ```
 
