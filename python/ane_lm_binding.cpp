@@ -209,9 +209,40 @@ public:
         return result;
     }
 
+    /// Prefill only — ANE batch prefill, no decode.
+    /// Returns PrefillResult with prompt tok/s.
+    /// After this call, model state (KV cache, DeltaNet state) is populated.
+    /// Call save_state() to export for MLX GPU decode.
+    std::pair<int, double> prefill_only(
+        const std::string& prompt,
+        bool enable_thinking = false
+    ) {
+        check_loaded();
+        model_->reset();
+
+        ane_lm::PrefillResult pr = ane_lm::prefill_only(
+            *model_, tokenizer_, prompt, enable_thinking
+        );
+
+        last_prefill_n_tokens_ = pr.n_tokens;
+        return {pr.n_tokens, pr.tps};
+    }
+
+    /// Save model state to binary file for hybrid pipeline.
+    /// Must be called after prefill_only().
+    /// The state file can be read by hybrid_decode.py or Edge Studio's hybrid pipeline.
+    bool save_state(const std::string& path) {
+        check_loaded();
+        if (last_prefill_n_tokens_ <= 0) {
+            throw std::runtime_error("No prefill state — call prefill_only() first");
+        }
+        return model_->save_state(path.c_str(), last_prefill_n_tokens_);
+    }
+
     /// Reset model state (clear caches)
     void reset() {
         if (model_) model_->reset();
+        last_prefill_n_tokens_ = 0;
     }
 
     /// Encode text to token ids
@@ -243,6 +274,7 @@ private:
     bool loaded_ = false;
     std::string model_dir_;
     std::string architecture_;
+    int last_prefill_n_tokens_ = 0;
 };
 
 } // anonymous namespace
@@ -295,6 +327,13 @@ PYBIND11_MODULE(ane_lm, m) {
              py::arg("repetition_penalty") = 1.2f,
              py::arg("enable_thinking") = false,
              "Multi-turn chat. messages = [(role, content), ...]. Returns GenerationResult.")
+        .def("prefill_only", &PyModel::prefill_only,
+             py::arg("prompt"),
+             py::arg("enable_thinking") = false,
+             "ANE batch prefill only (no decode). Returns (n_tokens, tps). Call save_state() after.")
+        .def("save_state", &PyModel::save_state,
+             py::arg("path"),
+             "Save prefill state to binary file for MLX GPU decode. Call after prefill_only().")
         .def("reset", &PyModel::reset, "Reset model state (clear KV caches)")
         .def("encode", &PyModel::encode, py::arg("text"), "Encode text to token ids")
         .def("decode", &PyModel::decode, py::arg("ids"), "Decode token ids to text")
