@@ -4,7 +4,14 @@
 #include <objc/runtime.h>
 #include <objc/message.h>
 #include <dlfcn.h>
+#if __has_include(<IOSurface/IOSurface.h>)
 #include <IOSurface/IOSurface.h>
+#else
+// iOS: IOSurface headers are split across multiple files
+#include <IOSurface/IOSurfaceRef.h>
+#include <IOSurface/IOSurfaceTypes.h>
+#include <IOKit/IOReturn.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
