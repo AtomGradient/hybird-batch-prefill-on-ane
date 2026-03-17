@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: ane-lm
+Version: 0.1.0
+Summary: ANE-LM: Neural Engine batch prefill inference for Qwen3.5/Qwen3
+Author: AtomGradient
+Requires-Python: >=3.11
+Dynamic: author
+Dynamic: requires-python
+Dynamic: summary
