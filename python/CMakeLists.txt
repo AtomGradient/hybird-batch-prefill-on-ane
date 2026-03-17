@@ -7,7 +7,17 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "")
 
 add_compile_definitions(ACCELERATE_NEW_LAPACK)
 
-# pybind11
+# pybind11 — find via Python (works in pip build isolation)
+execute_process(
+    COMMAND "${PYTHON_EXECUTABLE}" -m pybind11 --cmakedir
+    OUTPUT_VARIABLE pybind11_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _pybind11_result
+)
+if(NOT _pybind11_result EQUAL 0)
+    # Fallback: try system cmake find
+    message(STATUS "pybind11 --cmakedir failed, trying find_package")
+endif()
 find_package(pybind11 REQUIRED)
 
 # Fetch same dependencies as main project
