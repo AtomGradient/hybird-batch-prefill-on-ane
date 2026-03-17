@@ -62,7 +62,22 @@ set(MAIN_SOURCE
     main.cpp
 )
 
-# Executable
+# === Static library for xcframework (EdgeRuntime integration) ===
+add_library(ane_inference STATIC
+    ${VENDOR_SOURCES}
+    ${CORE_SOURCES}
+    ${MODEL_SOURCES}
+    ane_inference_bridge.cpp
+)
+
+target_link_libraries(ane_inference PUBLIC
+    nlohmann_json::nlohmann_json
+    tokenizers_cpp
+)
+
+target_compile_options(ane_inference PRIVATE -O3)
+
+# === Executable (CLI) ===
 add_executable(ane-lm
     ${VENDOR_SOURCES}
     ${CORE_SOURCES}
