@@ -2,67 +2,85 @@
 set -euo pipefail
 
 # Build ANE-LM as xcframework for EdgeRuntime integration
+# Builds for: macOS arm64 + iOS arm64
 # Output: build/ANEInference.xcframework
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build/xcframework-build"
 OUTPUT_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ANEInference"
+NCPU=$(sysctl -n hw.ncpu)
 
-echo "=== Building ANE-LM xcframework ==="
+echo "=== Building ANE-LM xcframework (macOS + iOS) ==="
 
-# Clean
+# Clean previous build
 rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR/macos-arm64"
 
-# Build for macOS arm64
-echo ">> Building for macOS arm64..."
-cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR/macos-arm64" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DBUILD_XCFRAMEWORK=ON
+# ── Helper: build one platform, produce a merged static library ──
+build_platform() {
+    local PLATFORM=$1   # "macos" or "ios"
+    local SYSROOT=$2    # SDK path
+    local DEPLOY_FLAG=$3 # cmake deployment target flag
+    local DEPLOY_VER=$4  # minimum version
 
-cmake --build "$BUILD_DIR/macos-arm64" -j$(sysctl -n hw.ncpu)
+    local PDIR="$BUILD_DIR/$PLATFORM-arm64"
+    mkdir -p "$PDIR"
 
-# Collect ALL objects + vendor static libraries into one fat static library
-echo ">> Creating static library (with all dependencies)..."
-OBJECTS_DIR="$BUILD_DIR/macos-arm64/CMakeFiles/ane-lm.dir"
-STATIC_LIB="$BUILD_DIR/macos-arm64/libane_inference_full.a"
+    echo ""
+    echo ">> Building for $PLATFORM arm64..."
+    cmake -S "$SCRIPT_DIR" -B "$PDIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -DCMAKE_OSX_SYSROOT="$SYSROOT" \
+        -D"$DEPLOY_FLAG"="$DEPLOY_VER" \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_XCFRAMEWORK=ON
 
-# 1. Collect all .o files from ALL cmake targets (ane-lm + ane_inference bridge)
-find "$BUILD_DIR/macos-arm64/CMakeFiles" -name "*.o" \
-    -not -path "*/_deps/*" \
-    | xargs ar rcs "$STATIC_LIB"
+    cmake --build "$PDIR" -j"$NCPU"
 
-# 2. Merge vendor .o files (jinja, tokenizers_cpp wrapper)
-VENDOR_OBJECTS=$(find "$BUILD_DIR/macos-arm64" -path "*/jinja/*.o" -o -path "*/tokenizers_cpp*.o" 2>/dev/null || true)
-if [ -n "$VENDOR_OBJECTS" ]; then
-    echo "$VENDOR_OBJECTS" | xargs ar rcs "$STATIC_LIB"
-fi
+    # Merge all .o from our targets (ane-lm + ane_inference) into one .a
+    local LIB="$PDIR/libane_inference_full.a"
+    echo ">> Collecting object files..."
+    find "$PDIR/CMakeFiles" -name "*.o" -not -path "*/_deps/*" \
+        | xargs ar rcs "$LIB"
 
-# 3. Merge Rust tokenizers_c static library (provides tokenizers_encode, tokenizers_decode, etc.)
-RUST_TOKENIZERS=$(find "$BUILD_DIR/macos-arm64" -name "libtokenizers_c.a" 2>/dev/null | head -1)
-if [ -n "$RUST_TOKENIZERS" ] && [ -f "$RUST_TOKENIZERS" ]; then
-    echo ">> Merging Rust tokenizers: $RUST_TOKENIZERS"
-    # Use libtool to merge both .a files into one
-    libtool -static -o "$STATIC_LIB.merged" "$STATIC_LIB" "$RUST_TOKENIZERS"
-    mv "$STATIC_LIB.merged" "$STATIC_LIB"
-else
-    echo "!! WARNING: libtokenizers_c.a not found — tokenizer symbols will be missing"
-fi
+    # Merge ALL vendor static libraries (_deps/)
+    local VENDOR_LIBS=$(find "$PDIR/_deps" -name "*.a" 2>/dev/null || true)
+    if [ -n "$VENDOR_LIBS" ]; then
+        local MERGE_ARGS="$LIB"
+        while IFS= read -r vlib; do
+            echo "   + $(basename "$vlib")"
+            MERGE_ARGS="$MERGE_ARGS $vlib"
+        done <<< "$VENDOR_LIBS"
+        libtool -static -o "$LIB.merged" $MERGE_ARGS
+        mv "$LIB.merged" "$LIB"
+    fi
 
-# 4. Merge any other vendor .a files (safetensors, etc.)
-for vendor_lib in $(find "$BUILD_DIR/macos-arm64/_deps" -name "*.a" ! -name "libtokenizers_c.a" 2>/dev/null); do
-    echo ">> Merging: $(basename $vendor_lib)"
-    libtool -static -o "$STATIC_LIB.merged" "$STATIC_LIB" "$vendor_lib"
-    mv "$STATIC_LIB.merged" "$STATIC_LIB"
-done
+    echo ">> $PLATFORM library: $(du -h "$LIB" | cut -f1)"
 
-echo ">> Static library: $(du -h "$STATIC_LIB" | cut -f1)"
+    # Verify key symbols
+    if nm "$LIB" 2>/dev/null | grep -q "T _ane_model_load"; then
+        echo "   ✅ ane_model_load"
+    else
+        echo "   ❌ ane_model_load MISSING"; exit 1
+    fi
+    if nm "$LIB" 2>/dev/null | grep -q "T _tokenizers_encode"; then
+        echo "   ✅ tokenizers_encode"
+    else
+        echo "   ⚠️  tokenizers_encode not found (may be in vendor lib)"
+    fi
+}
 
-# Create module map and umbrella header
+# ── Build macOS ──
+MACOS_SDK=$(xcrun --sdk macosx --show-sdk-path)
+build_platform "macos" "$MACOS_SDK" "CMAKE_OSX_DEPLOYMENT_TARGET" "14.0"
+
+# ── Build iOS ──
+IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+build_platform "ios" "$IOS_SDK" "CMAKE_OSX_DEPLOYMENT_TARGET" "17.0"
+
+# ── Headers ──
+echo ""
 echo ">> Creating headers..."
 HEADER_DIR="$BUILD_DIR/headers"
 mkdir -p "$HEADER_DIR"
@@ -122,20 +140,15 @@ module ANEInference {
 }
 MODULEMAP
 
-# Create xcframework
+# ── Create xcframework (macOS + iOS) ──
+echo ""
 echo ">> Creating xcframework..."
 rm -rf "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 
-# Verify key symbols exist
-echo ">> Verifying tokenizer symbols..."
-if nm "$STATIC_LIB" | grep -q "_tokenizers_encode"; then
-    echo "   ✅ tokenizers_encode found"
-else
-    echo "   ❌ tokenizers_encode MISSING — xcframework will have link errors"
-fi
-
 xcodebuild -create-xcframework \
-    -library "$STATIC_LIB" \
+    -library "$BUILD_DIR/macos-arm64/libane_inference_full.a" \
+    -headers "$HEADER_DIR" \
+    -library "$BUILD_DIR/ios-arm64/libane_inference_full.a" \
     -headers "$HEADER_DIR" \
     -output "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 
@@ -143,3 +156,8 @@ echo ""
 echo "=== Done ==="
 echo "Output: $OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 echo "Size: $(du -sh "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework" | cut -f1)"
+echo ""
+echo "Platforms:"
+ls -d "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"/*-arm64 2>/dev/null | while read d; do
+    echo "  $(basename "$d"): $(du -h "$d"/*.a | cut -f1)"
+done
