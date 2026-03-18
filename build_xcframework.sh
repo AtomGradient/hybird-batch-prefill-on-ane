@@ -38,23 +38,26 @@ build_platform() {
 
     cmake --build "$PDIR" -j"$NCPU"
 
-    # Merge all .o from our targets (ane-lm + ane_inference) into one .a
+    # cmake already built libane_inference.a with all our source .o files.
+    # We just need to merge it with vendor static libraries (tokenizers, sentencepiece, etc.)
+    local CMAKE_LIB="$PDIR/libane_inference.a"
     local LIB="$PDIR/libane_inference_full.a"
-    echo ">> Collecting object files..."
-    find "$PDIR/CMakeFiles" -name "*.o" -not -path "*/_deps/*" \
-        | xargs ar rcs "$LIB"
 
-    # Merge ALL vendor static libraries (_deps/)
+    if [ ! -f "$CMAKE_LIB" ]; then
+        echo "   ❌ cmake did not produce libane_inference.a"; exit 1
+    fi
+
+    # Collect all .a files to merge: our lib + all vendor deps
+    local ALL_LIBS="$CMAKE_LIB"
     local VENDOR_LIBS=$(find "$PDIR/_deps" -name "*.a" 2>/dev/null || true)
     if [ -n "$VENDOR_LIBS" ]; then
-        local MERGE_ARGS="$LIB"
         while IFS= read -r vlib; do
             echo "   + $(basename "$vlib")"
-            MERGE_ARGS="$MERGE_ARGS $vlib"
+            ALL_LIBS="$ALL_LIBS $vlib"
         done <<< "$VENDOR_LIBS"
-        libtool -static -o "$LIB.merged" $MERGE_ARGS
-        mv "$LIB.merged" "$LIB"
     fi
+
+    libtool -static -o "$LIB" $ALL_LIBS
 
     echo ">> $PLATFORM library: $(du -h "$LIB" | cut -f1)"
 
