@@ -26,19 +26,37 @@ cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR/macos-arm64" \
 
 cmake --build "$BUILD_DIR/macos-arm64" -j$(sysctl -n hw.ncpu)
 
-# Collect objects into static library
-echo ">> Creating static library..."
+# Collect ALL objects + vendor static libraries into one fat static library
+echo ">> Creating static library (with all dependencies)..."
 OBJECTS_DIR="$BUILD_DIR/macos-arm64/CMakeFiles/ane-lm.dir"
-STATIC_LIB="$BUILD_DIR/macos-arm64/libane_inference.a"
+STATIC_LIB="$BUILD_DIR/macos-arm64/libane_inference_full.a"
 
-# Find all .o files from the build
+# 1. Collect all .o files from the main build
 find "$OBJECTS_DIR" -name "*.o" | xargs ar rcs "$STATIC_LIB"
 
-# Also need vendor objects
+# 2. Merge vendor .o files (jinja, tokenizers_cpp wrapper)
 VENDOR_OBJECTS=$(find "$BUILD_DIR/macos-arm64" -path "*/jinja/*.o" -o -path "*/tokenizers_cpp*.o" 2>/dev/null || true)
 if [ -n "$VENDOR_OBJECTS" ]; then
     echo "$VENDOR_OBJECTS" | xargs ar rcs "$STATIC_LIB"
 fi
+
+# 3. Merge Rust tokenizers_c static library (provides tokenizers_encode, tokenizers_decode, etc.)
+RUST_TOKENIZERS=$(find "$BUILD_DIR/macos-arm64" -name "libtokenizers_c.a" 2>/dev/null | head -1)
+if [ -n "$RUST_TOKENIZERS" ] && [ -f "$RUST_TOKENIZERS" ]; then
+    echo ">> Merging Rust tokenizers: $RUST_TOKENIZERS"
+    # Use libtool to merge both .a files into one
+    libtool -static -o "$STATIC_LIB.merged" "$STATIC_LIB" "$RUST_TOKENIZERS"
+    mv "$STATIC_LIB.merged" "$STATIC_LIB"
+else
+    echo "!! WARNING: libtokenizers_c.a not found — tokenizer symbols will be missing"
+fi
+
+# 4. Merge any other vendor .a files (safetensors, etc.)
+for vendor_lib in $(find "$BUILD_DIR/macos-arm64/_deps" -name "*.a" ! -name "libtokenizers_c.a" 2>/dev/null); do
+    echo ">> Merging: $(basename $vendor_lib)"
+    libtool -static -o "$STATIC_LIB.merged" "$STATIC_LIB" "$vendor_lib"
+    mv "$STATIC_LIB.merged" "$STATIC_LIB"
+done
 
 echo ">> Static library: $(du -h "$STATIC_LIB" | cut -f1)"
 
@@ -105,6 +123,14 @@ MODULEMAP
 # Create xcframework
 echo ">> Creating xcframework..."
 rm -rf "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
+
+# Verify key symbols exist
+echo ">> Verifying tokenizer symbols..."
+if nm "$STATIC_LIB" | grep -q "_tokenizers_encode"; then
+    echo "   ✅ tokenizers_encode found"
+else
+    echo "   ❌ tokenizers_encode MISSING — xcframework will have link errors"
+fi
 
 xcodebuild -create-xcframework \
     -library "$STATIC_LIB" \
