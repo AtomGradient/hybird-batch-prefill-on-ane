@@ -31,8 +31,10 @@ echo ">> Creating static library (with all dependencies)..."
 OBJECTS_DIR="$BUILD_DIR/macos-arm64/CMakeFiles/ane-lm.dir"
 STATIC_LIB="$BUILD_DIR/macos-arm64/libane_inference_full.a"
 
-# 1. Collect all .o files from the main build
-find "$OBJECTS_DIR" -name "*.o" | xargs ar rcs "$STATIC_LIB"
+# 1. Collect all .o files from ALL cmake targets (ane-lm + ane_inference bridge)
+find "$BUILD_DIR/macos-arm64/CMakeFiles" -name "*.o" \
+    -not -path "*/_deps/*" \
+    | xargs ar rcs "$STATIC_LIB"
 
 # 2. Merge vendor .o files (jinja, tokenizers_cpp wrapper)
 VENDOR_OBJECTS=$(find "$BUILD_DIR/macos-arm64" -path "*/jinja/*.o" -o -path "*/tokenizers_cpp*.o" 2>/dev/null || true)
