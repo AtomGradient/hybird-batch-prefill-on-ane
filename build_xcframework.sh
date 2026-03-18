@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build ANE-LM as xcframework for EdgeRuntime integration
-# Currently: macOS arm64 only (iOS support TODO)
+# Platforms: macOS arm64 + iOS arm64
 # Output: build/ANEInference.xcframework
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,56 +11,65 @@ OUTPUT_DIR="$SCRIPT_DIR/build"
 FRAMEWORK_NAME="ANEInference"
 NCPU=$(sysctl -n hw.ncpu)
 
-echo "=== Building ANE-LM xcframework ==="
+echo "=== Building ANE-LM xcframework (macOS + iOS) ==="
 
 # Clean
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# ── Helper: build for a platform ──
+build_platform() {
+    local PLATFORM=$1    # macos-arm64 or ios-arm64
+    local PLATFORM_DIR="$BUILD_DIR/$PLATFORM"
+    local CMAKE_EXTRA_ARGS=("${@:2}")
+
+    echo ""
+    echo ">> Building for $PLATFORM..."
+    cmake -S "$SCRIPT_DIR" -B "$PLATFORM_DIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -DBUILD_SHARED_LIBS=OFF \
+        "${CMAKE_EXTRA_ARGS[@]}"
+
+    cmake --build "$PLATFORM_DIR" -j"$NCPU" --target ane_inference
+
+    # Merge into single static library
+    echo ">> Merging static libraries for $PLATFORM..."
+    local FULL_LIB="$PLATFORM_DIR/libane_inference_full.a"
+    local MERGE_INPUTS="$PLATFORM_DIR/libane_inference.a"
+
+    for vlib in $(find "$PLATFORM_DIR/_deps" -name "*.a" 2>/dev/null); do
+        echo "   + $(basename "$vlib")"
+        MERGE_INPUTS="$MERGE_INPUTS $vlib"
+    done
+
+    libtool -static -o "$FULL_LIB" $MERGE_INPUTS
+    echo ">> Merged: $(du -h "$FULL_LIB" | cut -f1)"
+
+    # Verify our symbols exist
+    for sym in _ane_model_load _ane_generate _ane_prefill_only _ane_save_state; do
+        if nm "$PLATFORM_DIR/libane_inference.a" 2>/dev/null | grep -q "T $sym"; then
+            echo "   ✅ $sym"
+        else
+            echo "   ❌ $sym MISSING"
+            exit 1
+        fi
+    done
+}
+
 # ── Build macOS arm64 ──
-MACOS_DIR="$BUILD_DIR/macos-arm64"
-echo ">> Building for macOS arm64..."
-cmake -S "$SCRIPT_DIR" -B "$MACOS_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
-    -DBUILD_SHARED_LIBS=OFF
+build_platform "macos-arm64" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
 
-cmake --build "$MACOS_DIR" -j"$NCPU"
-
-# ── Merge into single static library ──
-# cmake produces libane_inference.a (our code) + vendor .a files in _deps/
-# We merge everything into one libane_inference_full.a
-echo ">> Merging static libraries..."
-FULL_LIB="$MACOS_DIR/libane_inference_full.a"
-MERGE_INPUTS="$MACOS_DIR/libane_inference.a"
-
-for vlib in $(find "$MACOS_DIR/_deps" -name "*.a" 2>/dev/null); do
-    echo "   + $(basename "$vlib")"
-    MERGE_INPUTS="$MERGE_INPUTS $vlib"
-done
-
-libtool -static -o "$FULL_LIB" $MERGE_INPUTS
-echo ">> Merged library: $(du -h "$FULL_LIB" | cut -f1)"
-
-# ── Verify symbols (check cmake .a which nm can read cleanly) ──
-echo ">> Verifying symbols..."
-for sym in _ane_model_load _ane_generate _ane_prefill_only _ane_save_state; do
-    if nm "$MACOS_DIR/libane_inference.a" 2>/dev/null | grep -q "T $sym"; then
-        echo "   ✅ $sym"
-    else
-        echo "   ❌ $sym MISSING from libane_inference.a"
-        exit 1
-    fi
-done
-# tokenizers symbols come from Rust .a (nm may warn about LLVM version mismatch, ignore)
-if nm "$FULL_LIB" 2>&1 | grep -q "_tokenizers_encode"; then
-    echo "   ✅ _tokenizers_encode"
-else
-    echo "   ⚠️  _tokenizers_encode not verified (Rust LLVM version mismatch in nm)"
-fi
+# ── Build iOS arm64 ──
+IOS_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+build_platform "ios-arm64" \
+    -DCMAKE_SYSTEM_NAME=iOS \
+    -DCMAKE_OSX_SYSROOT="$IOS_SYSROOT" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0
 
 # ── Headers ──
+echo ""
 echo ">> Creating headers..."
 HEADER_DIR="$BUILD_DIR/headers"
 mkdir -p "$HEADER_DIR"
@@ -98,12 +107,15 @@ module ANEInference {
 }
 MODULEMAP
 
-# ── Create xcframework ──
+# ── Create xcframework with both platforms ──
+echo ""
 echo ">> Creating xcframework..."
 rm -rf "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 
 xcodebuild -create-xcframework \
-    -library "$FULL_LIB" \
+    -library "$BUILD_DIR/macos-arm64/libane_inference_full.a" \
+    -headers "$HEADER_DIR" \
+    -library "$BUILD_DIR/ios-arm64/libane_inference_full.a" \
     -headers "$HEADER_DIR" \
     -output "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 
@@ -111,3 +123,7 @@ echo ""
 echo "=== Done ==="
 echo "Output: $OUTPUT_DIR/$FRAMEWORK_NAME.xcframework"
 echo "Size: $(du -sh "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework" | cut -f1)"
+echo ""
+echo "Platforms:"
+xcodebuild -checkFirstLaunchStatus 2>/dev/null || true
+plutil -p "$OUTPUT_DIR/$FRAMEWORK_NAME.xcframework/Info.plist" | grep -A2 'SupportedPlatform'

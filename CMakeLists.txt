@@ -77,29 +77,29 @@ target_link_libraries(ane_inference PUBLIC
 
 target_compile_options(ane_inference PRIVATE -O3)
 
-# === Executable (CLI) ===
-add_executable(ane-lm
-    ${VENDOR_SOURCES}
-    ${CORE_SOURCES}
-    ${MODEL_SOURCES}
-    ${MAIN_SOURCE}
-)
+# === Executable (CLI) — macOS only ===
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_executable(ane-lm
+        ${VENDOR_SOURCES}
+        ${CORE_SOURCES}
+        ${MODEL_SOURCES}
+        ${MAIN_SOURCE}
+    )
 
-# Link frameworks and ObjC runtime
-target_link_libraries(ane-lm PRIVATE
-    nlohmann_json::nlohmann_json
-    tokenizers_cpp
-    "-framework Foundation"
-    "-framework IOSurface"
-    "-framework Accelerate"
-    "-lobjc"
-)
+    target_link_libraries(ane-lm PRIVATE
+        nlohmann_json::nlohmann_json
+        tokenizers_cpp
+        "-framework Foundation"
+        "-framework IOSurface"
+        "-framework Accelerate"
+        "-lobjc"
+    )
 
-# Optimization for release
-target_compile_options(ane-lm PRIVATE
-    $<$<CONFIG:Release>:-O3>
-    $<$<CONFIG:RelWithDebInfo>:-O2 -g>
-)
+    target_compile_options(ane-lm PRIVATE
+        $<$<CONFIG:Release>:-O3>
+        $<$<CONFIG:RelWithDebInfo>:-O2 -g>
+    )
+endif()
 
 # Default to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
